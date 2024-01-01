@@ -1,0 +1,16 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model TreeCategory {
+  id           String          @id @default(uuid())
+  title        String
+  parent_id    String?         @map("parentId")
+  parent       TreeCategory?   @relation("TreeCategoryToTreeCategory", fields: [parent_id], references: [id])
+  subCategories TreeCategory[] @relation("TreeCategoryToTreeCategory")
+}
