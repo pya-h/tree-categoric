@@ -15,8 +15,10 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return defined routes.', () => {
+      expect(appController.showRoutes()).toBe(
+        '<h1>Routes are on /category</h1>',
+      );
     });
   });
 });
