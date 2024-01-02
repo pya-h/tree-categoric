@@ -1,80 +1,113 @@
+// todo.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma.service';
+import { TreeCategoryService } from './tree-category.service';
+import { PrismaService } from '../prisma.service';
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication;
+describe('TreeCategoryService', () => {
+  let treeCategoryService: TreeCategoryService;
 
   beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [PrismaService],
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [TreeCategoryService, PrismaService],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
-    await app.init();
+    treeCategoryService = module.get<TreeCategoryService>(TreeCategoryService);
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('<h1>Routes are on /category</h1>');
+  it('should be defined', () => {
+    expect(treeCategoryService).toBeDefined();
   });
 
-  it('/ (POST)', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/category')
-      .send({ title: 'e2eTestNew', parent_id: null })
-      .expect(201);
-    expect(response.body.title).toBe('e2eTestNew');
-    expect(response.body.parent_id).toBe(null);
+  // READ ONE
+
+  it('get some categories one by one', async () => {
+    // searching for valid ids
+    const IDs = [
+      'f82f5f27-6e46-4ca3-951e-3018fe9bd99c',
+      '9b9f61c2-3e1c-4265-8ddc-6de33eb210c0',
+      '9bfdd29d-be03-463f-85e7-fd7b96767b99',
+    ];
+
+    for (const id of IDs) {
+      const item = await treeCategoryService.findOne(id);
+      expect(item.id).toBe(id);
+    }
+
+    // now search for an unexisting one
+    const nID = 'Some Nonesense id';
+    let found = false;
+    try {
+      const item = await treeCategoryService.findOne(nID);
+      expect(item).toEqual(null);
+      found = Boolean(item); // not found body => empty
+    } catch (ex) {
+      found = false;
+    } finally {
+      expect(found).toBe(false);
+    }
   });
 
-  it('/ (PUT)', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/category/cc433479-2f3f-4cb3-abee-ed12e2bddc06')
-      .send({ title: 'testY_updated by e2e' })
-      .expect(200);
-    expect(response.body.title).toBe('testY_updated by e2e');
-  });
-
-  it('/ (GET)', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/category/65108f4c-7b24-46ce-85e9-1e12f2a079a9')
-      .expect(200);
-    const expectedItem = {
-      id: '65108f4c-7b24-46ce-85e9-1e12f2a079a9',
+  // CREATE
+  it('create new category/subcategory', async () => {
+    const newParent = await treeCategoryService.create({
       title: 'testX',
       parent_id: null,
-      subCategories: [
-        {
-          id: '705ac6a5-856e-4776-a34d-d5cdc4937afc',
-          title: 'sub1',
-          parent_id: '65108f4c-7b24-46ce-85e9-1e12f2a079a9',
-        },
-        {
-          id: '24558798-f20e-4d7f-a6ad-92b600acc200',
-          title: 'sub2',
-          parent_id: '65108f4c-7b24-46ce-85e9-1e12f2a079a9',
-        },
-        {
-          id: '1228603d-6658-4638-9250-82ab93532417',
-          title: 'sub_n',
-          parent_id: '65108f4c-7b24-46ce-85e9-1e12f2a079a9',
-        },
-      ],
-    };
+    });
+    expect(newParent.title).toBe('testX');
+    expect(newParent.parent_id).toBe(null);
 
-    expect(response.body).toEqual(expectedItem);
+    for (const title of ['sub1', 'sub2', 'sub_n']) {
+      const newSub = await treeCategoryService.create({
+        title,
+        parent_id: newParent.id,
+      });
+      expect(newSub.title).toEqual(title);
+      expect(newSub.parent_id).toEqual(newParent.id);
+    }
   });
 
-  it('/ (GET)', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/category')
-      .expect(200);
+  // DELETE
+  it('delete a category (last one)', async () => {
+    // get an item
+    const result = await treeCategoryService.findAll();
+    if (result.length) {
+      const toBeDeleted = result[result.length - 1];
+      const deleted = await treeCategoryService.delete(toBeDeleted.id);
+      expect(deleted.id).toEqual(toBeDeleted.id);
+      expect(deleted.title).toEqual(toBeDeleted.title);
+
+      let done = false;
+      try {
+        // after deleting the item, it must not be removed again!
+        await treeCategoryService.delete(toBeDeleted.id);
+        done = true;
+      } catch (ex) {
+        // whatever
+        done = false;
+      } finally {
+        expect(done).toBe(false);
+      }
+    }
+  });
+
+  // UPDATE
+  it('update a category; last 3 from get req', async () => {
+    // get an item
+    const newTitles = ['1st', '2nd', '3rd'];
+    const result = await treeCategoryService.findAll();
+    for (let i = 1; i <= result.length && i <= 3; i++) {
+      const toBeUpdated = result[result.length - i];
+      const updated = await treeCategoryService.update(toBeUpdated.id, {
+        title: newTitles[i] + ' Updated',
+        parent_id: null, // if the're subcategories, put them out
+      });
+      expect(updated.title).toBe(newTitles[i] + ' Updated');
+      expect(updated.parent_id).toBe(null);
+    }
+  });
+  // READ
+  it('should return an empty array initially', async () => {
+    const result = await treeCategoryService.findAll();
     const expectedItems = [
       {
         id: '4ba0299e-dbfe-4ec2-8e09-e4203dd1d304',
@@ -258,104 +291,7 @@ describe('AppController (e2e)', () => {
         parent_id: null,
         subCategories: [],
       },
-      {
-        id: '9013a8b7-2f41-4dc0-8fa8-a6d2230a3575',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '264eba57-4b8b-45e7-bb41-a9f2ba52c98b',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: 'b0d777c7-d40c-4977-8479-78dcf00f4458',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '0e191465-df6b-4361-aaf7-cf24a0e89d4b',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: 'bf7bfcf5-3a5b-4814-8755-8f59d7e5bb66',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: 'ed7046bc-6bd7-45ab-9cbf-fae1ab2ea414',
-        title: '2nd Updated',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '0588cd1f-9882-4df2-8d9b-4c54eaa4cd22',
-        title: '3rd Updated',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '31ae4a3b-0e79-49a3-831b-95a9b24d8ce1',
-        title: 'undefined Updated',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '0c6a21fd-a550-4e74-ba2e-5d4044db7d7d',
-        title: '2nd Updated',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '1ac2839e-a0c7-4c2d-a4d3-f334eb2253e0',
-        title: '3rd Updated',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '32d71188-b90b-4da8-bcb5-f813a1a908a2',
-        title: 'undefined Updated',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '4b4a62db-2477-4fc7-85c7-1e094bbdbf4f',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '3e9d3652-c74a-4435-8476-952bc49d76b8',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: 'cf9a89ff-7e91-4639-b9dc-83f1d5427215',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
-      {
-        id: '73cfa6b7-481d-490f-9760-1f55d16770c7',
-        title: 'e2eTestNew',
-        parent_id: null,
-        subCategories: [],
-      },
     ];
-    for (const item of expectedItems)
-      expect(response.body).toContainEqual(item);
-  });
-
-  it('/ (DELETE)', async () => {
-    return await request(app.getHttpServer())
-      .delete('/category/0b5a37e9-e594-458a-8222-9922736b0335')
-      .expect(200); // this test just succeeds one time
+    for (const item of expectedItems) expect(result).toContainEqual(item);
   });
 });
